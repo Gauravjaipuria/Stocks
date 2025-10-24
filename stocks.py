@@ -1,12 +1,11 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, timedelta
-import tempfile
-import os
-
+import numpy as np
+import matplotlib.pyplot as plt
 from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator
+import io
 
 st.set_page_config(page_title="Stock Analytics Suite", layout="wide")
 st.title("📊 Stock Analytics Suite (Breakouts, Behaviors & Backtests)")
@@ -161,21 +160,23 @@ with tab2:
         txt = "\n".join(all_analyses)
         st.download_button("Download as Text", txt, file_name="multi_stock_behavioral_analysis.txt", mime="text/plain")
 
-# ==== Tab 3: Place-holder for MA/RSI strategy ====
+# ==== Tab 3: MA/RSI + Stoploss Backtest with Plot and Trade Log Download ====
 with tab3:
-    st.header("⚡ Advanced: MA + RSI Strategy")
-
-    stock_input = st.text_input("Enter stock symbol", value="RELIANCE")
-    inv_amount = st.number_input("Enter investment amount (₹)", min_value=1000, value=100000)
-    yrs = st.slider("Backtest period (years)", 1, 12, value=3)
+    st.header("⚡ Advanced: MA + RSI Backtest")
+    stock_input = st.text_input("Enter stock symbol", value="RELIANCE", key="tab3_symbol")
+    inv_amount = st.number_input("Enter investment amount (₹)", min_value=1000, value=100000, key="tab3_amt")
+    yrs = st.slider("Backtest period (years)", 1, 12, value=3, key="tab3_years")
     run_bt = st.button("Run MA/RSI Backtest")
-
     if run_bt and stock_input:
         suffix = ".NS" if not stock_input.upper().endswith((".NS", ".AX")) else ""
         ticker = stock_input.upper() + suffix
         df = yf.download(ticker, period=f"{yrs}y", interval="1d", auto_adjust=True)
         if not df.empty:
             close_series = df['Close']
+            # Ensure close_series is always 1D Series
+            if isinstance(close_series, pd.DataFrame):
+                close_series = close_series.iloc[:, 0]
+            # Compute Indicators
             df['RSI'] = RSIIndicator(close_series, window=14).rsi()
             df['SMA_short'] = SMAIndicator(close_series, window=20).sma_indicator()
             df['SMA_long'] = SMAIndicator(close_series, window=50).sma_indicator()
@@ -199,6 +200,7 @@ with tab3:
             st.line_chart(df['Portfolio Value'])
             st.write(f"Final Portfolio Value: ₹{df['Portfolio Value'].iloc[-1]:,.2f}")
             st.write(f"Total Trades: {trades}")
+            # Show trade log and download
             trade_log_df = pd.DataFrame(trade_log, columns=['Date', 'Action', 'Price'])
             if not trade_log_df.empty:
                 output = io.BytesIO()
