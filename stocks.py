@@ -161,4 +161,46 @@ with tab2:
 # ==== Tab 3: Place-holder for MA/RSI strategy ====
 with tab3:
     st.header("⚡ Advanced: MA + RSI Strategy")
-    st.info("For a Streamlit MA/RSI backtest with trade log and charting, additional modules (`ta`, `matplotlib`, etc.) must be installed on the server. Let me know if you want a ready-to-run backtest module with Streamlit plotting and downloads.")
+
+    stock_input = st.text_input("Enter stock symbol", value="RELIANCE")
+    inv_amount = st.number_input("Enter investment amount (₹)", min_value=1000, value=100000)
+    yrs = st.slider("Backtest period (years)", 1, 12, value=3)
+    run_bt = st.button("Run MA/RSI Backtest")
+
+    if run_bt and stock_input:
+        suffix = ".NS" if not stock_input.upper().endswith((".NS", ".AX")) else ""
+        ticker = stock_input.upper() + suffix
+        df = yf.download(ticker, period=f"{yrs}y", interval="1d", auto_adjust=True)
+        if not df.empty:
+            close_series = df['Close']
+            df['RSI'] = RSIIndicator(close_series, window=14).rsi()
+            df['SMA_short'] = SMAIndicator(close_series, window=20).sma_indicator()
+            df['SMA_long'] = SMAIndicator(close_series, window=50).sma_indicator()
+            df['Signal'] = 0
+            df.loc[(df['RSI'] > 30) & (df['SMA_short'] > df['SMA_long']), 'Signal'] = 1
+            position, entry_price, trades = 0, 0.0, 0
+            positions_list, trade_log = [], []
+            for i in range(len(df)):
+                date, price = df.index[i], close_series.iloc[i]
+                if position == 0 and df['Signal'].iloc[i] == 1:
+                    position = 1; entry_price = price; trades += 1
+                    trade_log.append([date.date(), 'Buy', price])
+                elif position == 1 and (price <= entry_price * 0.99 or df['SMA_short'].iloc[i] < df['SMA_long'].iloc[i] or df['RSI'].iloc[i] < 70):
+                    position = 0; trades += 1
+                    trade_log.append([date.date(), 'Sell', price])
+                positions_list.append(position)
+            df['Position'] = positions_list
+            df['Market Return'] = close_series.pct_change()
+            df['Strategy Return'] = df['Market Return'] * df['Position'].shift(1).fillna(0)
+            df['Portfolio Value'] = inv_amount * (1 + df['Strategy Return']).cumprod()
+            st.line_chart(df['Portfolio Value'])
+            st.write(f"Final Portfolio Value: ₹{df['Portfolio Value'].iloc[-1]:,.2f}")
+            st.write(f"Total Trades: {trades}")
+            trade_log_df = pd.DataFrame(trade_log, columns=['Date', 'Action', 'Price'])
+            if not trade_log_df.empty:
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    trade_log_df.to_excel(writer, index=False)
+                st.download_button("Download Trade Log", output.getvalue(), file_name="trade_log.xlsx")
+        else:
+            st.error("No data found for this ticker.")
