@@ -138,7 +138,7 @@ with tab1:
             df, bullish, bearish = find_breakouts(tickers, suffix)
         if not df.empty:
             st.success(f"{bullish} Bullish LT | {bearish} Bearish LT")
-            st.table(df)  # Shows the entire table, but isn't scrollable or interactive
+            st.dataframe(df, height=min(400 + 20 * len(df), 1500))  # Show more rows by increasing height
             csv = df.to_csv(index=False)
             st.download_button("Download CSV", csv, file_name="breakout_stocks_filtered.csv", mime="text/csv")
         else:
