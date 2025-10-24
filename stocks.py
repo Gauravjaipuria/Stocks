@@ -19,7 +19,7 @@ def is_breakout_last_13_days(hist):
     return recent_close > past_high
 
 def find_breakouts(tickers, suffix):
-    breakout_results = []
+    all_results = []
     bullish_count = 0
     bearish_count = 0
     for ticker in tickers:
@@ -68,28 +68,30 @@ def find_breakouts(tickers, suffix):
             recent_volume = hist['Volume'].iloc[-1]
             avg_volume = hist['Volume'].iloc[-30:].mean()
             volume_confirmed = recent_volume > 1.5 * avg_volume
-            if is_breakout_last_13_days(hist) and ema_ok and volume_confirmed:
-                info = stock.info
-                sector = info.get('sector', 'Unknown')
-                breakout_results.append({
-                    'Ticker': full_ticker,
-                    'Sector': sector,
-                    'Current Price': round(hist['Close'].iloc[-1], 2),
-                    '30-Day High': round(hist['High'].iloc[-30:-1].max(), 2),
-                    'Breakout Date': hist.index[-1].strftime("%Y-%m-%d"),
-                    'MA Signal (LT)': ma_signal,
-                    'Trend Days LT (+/-)': trend_days_signed,
-                    'ST Signal': st_signal,
-                    'Trend Days ST (+/-)': st_days_signed,
-                    'EMA Filter': '✅',
-                    'Volume Confirmed': '✅',
-                    'Volume': int(recent_volume),
-                    'Avg Vol(30d)': int(avg_volume)
-                })
+            breakout = is_breakout_last_13_days(hist)
+            info = stock.info
+            sector = info.get('sector', 'Unknown')
+            all_results.append({
+                'Ticker': full_ticker,
+                'Sector': sector,
+                'Current Price': round(hist['Close'].iloc[-1], 2),
+                '30-Day High': round(hist['High'].iloc[-30:-1].max(), 2),
+                'Breakout Date': hist.index[-1].strftime("%Y-%m-%d"),
+                'MA Signal (LT)': ma_signal,
+                'Trend Days LT (+/-)': trend_days_signed,
+                'ST Signal': st_signal,
+                'Trend Days ST (+/-)': st_days_signed,
+                'EMA Filter': '✅' if ema_ok else '',
+                'Volume Confirmed': '✅' if volume_confirmed else '',
+                'Breakout': '✅' if breakout and ema_ok and volume_confirmed else '',
+                'Volume': int(recent_volume),
+                'Avg Vol(30d)': int(avg_volume)
+            })
         except Exception as e:
             continue
-    df = pd.DataFrame(breakout_results)
+    df = pd.DataFrame(all_results)
     return df, bullish_count, bearish_count
+
 
 # ===== Helper: Support/Resistance =====
 def analyze_stock_behavior(ticker, country):
