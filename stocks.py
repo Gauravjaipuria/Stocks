@@ -5,6 +5,9 @@ from datetime import datetime, timedelta
 import tempfile
 import os
 
+from ta.momentum import RSIIndicator
+from ta.trend import SMAIndicator
+
 st.set_page_config(page_title="Stock Analytics Suite", layout="wide")
 st.title("📊 Stock Analytics Suite (Breakouts, Behaviors & Backtests)")
 
