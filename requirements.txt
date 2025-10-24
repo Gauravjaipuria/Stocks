@@ -1,3 +1,7 @@
 streamlit
 yfinance
 pandas
+matplotlib
+ta
+numpy
+openpyxl
