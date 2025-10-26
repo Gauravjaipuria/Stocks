@@ -251,66 +251,86 @@ with tab2:
             use_container_width=True
         )
 
+
 # ==== Tab 3: MA/RSI Backtest ====
-if not df.empty:
-    close_series = df['Close']
-    df['RSI'] = RSIIndicator(close_series, window=14).rsi()
-    df['SMA_short'] = SMAIndicator(close_series, window=20).sma_indicator()
-    df['SMA_long'] = SMAIndicator(close_series, window=50).sma_indicator()
-    df['Signal'] = 0
-    df.loc[(df['RSI'] > 30) & (df['SMA_short'] > df['SMA_long']), 'Signal'] = 1
+with tab3:
+    st.header("⚡ MA + RSI Strategy Backtest")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        stock_input = st.text_input("Stock Symbol", value="RELIANCE", key="tab3_symbol")
+    with col2:
+        inv_amount = st.number_input("Investment (₹)", min_value=1000, value=100000, step=10000, key="tab3_amt")
+    with col3:
+        yrs = st.slider("Years", 1, 12, value=3, key="tab3_years")
+    
+    run_bt = st.button("🚀 Run Backtest", use_container_width=True)
+    
+    if run_bt and stock_input:
+        suffix = ".NS" if not stock_input.upper().endswith((".NS", ".AX")) else ""
+        ticker = stock_input.upper() + suffix
+        
+        with st.spinner(f"⏳ Backtesting {ticker}..."):
+            df = yf.download(ticker, period=f"{yrs}y", interval="1d", auto_adjust=True, progress=False)
+        
+        if not df.empty:
+            close_series = df['Close']
+            if isinstance(close_series, pd.DataFrame):
+                close_series = close_series.iloc[:, 0]
+            
+            # Compute Indicators
+            df['RSI'] = RSIIndicator(close_series, window=14).rsi()
+            df['SMA_short'] = SMAIndicator(close_series, window=20).sma_indicator()
+            df['SMA_long'] = SMAIndicator(close_series, window=50).sma_indicator()
+            df['Signal'] = 0
+            df.loc[(df['RSI'] > 30) & (df['SMA_short'] > df['SMA_long']), 'Signal'] = 1
+            
+            position, entry_price, trades = 0, 0.0, 0
+            positions_list, trade_log = [], []
+            
+            for i in range(len(df)):
+                date, price = df.index[i], close_series.iloc[i]
+                if position == 0 and df['Signal'].iloc[i] == 1:
+                    position, entry_price, trades = 1, price, trades + 1
+                    trade_log.append([date.date(), 'Buy', price])
+                elif position == 1 and (price <= entry_price * 0.99 or df['SMA_short'].iloc[i] < df['SMA_long'].iloc[i] or df['RSI'].iloc[i] < 70):
+                    position, trades = 0, trades + 1
+                    trade_log.append([date.date(), 'Sell', price])
+                positions_list.append(position)
+            
+            df['Position'] = positions_list
+            df['Market Return'] = close_series.pct_change()
+            df['Strategy Return'] = df['Market Return'] * df['Position'].shift(1).fillna(0)
+            df['Portfolio Value'] = inv_amount * (1 + df['Strategy Return']).cumprod()
+            
+            # Display Results
+            col1, col2, col3 = st.columns(3)
+            final_value = df['Portfolio Value'].iloc[-1]
+            total_return = ((final_value / inv_amount) - 1) * 100
+            
+            col1.metric("Initial Investment", f"₹{inv_amount:,.0f}")
+            col2.metric("Final Value", f"₹{final_value:,.2f}")
+            col3.metric("Total Return", f"{total_return:.2f}%")
+            
+            st.line_chart(df['Portfolio Value'], use_container_width=True)
+            st.info(f"📊 Total Trades Executed: **{trades}**")
+            
+            # Download Trade Log
+            trade_log_df = pd.DataFrame(trade_log, columns=['Date', 'Action', 'Price'])
+            if not trade_log_df.empty:
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    trade_log_df.to_excel(writer, index=False)
+                st.download_button(
+                    "📥 Download Trade Log (Excel)",
+                    output.getvalue(),
+                    file_name="trade_log.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+        else:
+            st.error("❌ No data found for this ticker.")
 
-    position, entry_price, trades = 0, 0.0, 0
-    positions_list, trade_log = [], []
-
-    for i in range(len(df)):
-        date, price = df.index[i], close_series.iloc[i]
-        if position == 0 and df['Signal'].iloc[i] == 1:
-            position, entry_price, trades = 1, price, trades + 1
-            trade_log.append([date.date(), 'Buy', price])
-        elif position == 1 and (price <= entry_price * 0.99 or df['SMA_short'].iloc[i] < df['SMA_long'].iloc[i] or df['RSI'].iloc[i] < 70):
-            position, trades = 0, trades + 1
-            trade_log.append([date.date(), 'Sell', price])
-        positions_list.append(position)
-
-    df['Position'] = positions_list
-    df['Market Return'] = close_series.pct_change()
-    df['Strategy Return'] = df['Market Return'] * df['Position'].shift(1).fillna(0)
-    df['Portfolio Value'] = inv_amount * (1 + df['Strategy Return']).cumprod()
-
-    # Buy & Hold Cumulative Return
-    df['BuyHold Value'] = inv_amount * (1 + df['Market Return']).cumprod()
-
-    final_value = df['Portfolio Value'].iloc[-1]
-    bh_final_value = df['BuyHold Value'].iloc[-1]
-    total_return = ((final_value / inv_amount) - 1) * 100
-    bh_return = ((bh_final_value / inv_amount) - 1) * 100
-
-    # Display Metrics
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Initial Investment", f"₹{inv_amount:,.0f}")
-    col2.metric("Final Value (Strategy)", f"₹{final_value:,.2f}")
-    col3.metric("Return (Strategy)", f"{total_return:.2f}%")
-    col4.metric("Return (Buy & Hold)", f"{bh_return:.2f}%")
-
-    st.line_chart(df[['Portfolio Value', 'BuyHold Value']], use_container_width=True)
-    st.info(f"📊 Total Trades Executed: **{trades}**")
-
-    # Download Trade Log
-    trade_log_df = pd.DataFrame(trade_log, columns=['Date', 'Action', 'Price'])
-    if not trade_log_df.empty:
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            trade_log_df.to_excel(writer, index=False)
-        st.download_button(
-            "📥 Download Trade Log (Excel)",
-            output.getvalue(),
-            file_name="trade_log.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-else:
-    st.error("❌ No data found for this ticker.")
 
 
 
