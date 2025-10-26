@@ -338,3 +338,4 @@ with tab3:
 
 st.divider()
 st.caption("💡 Built with Streamlit • Data from Yahoo Finance")
+st.caption("Gaurav Jain")
