@@ -213,12 +213,15 @@ with tab1:
             
             st.dataframe(df, use_container_width=True, height=600)
             
-            csv = df.to_csv(index=False).encode('utf-8')
+        if not df.empty:
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
             st.download_button(
-                "📥 Download CSV",
-                csv,
-                file_name="breakout_stocks.csv",
-                mime="text/csv",
+                label="📥 Download Excel",
+                data=output.getvalue(),
+                file_name="breakout_stocks.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
         else:
