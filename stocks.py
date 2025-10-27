@@ -6,7 +6,6 @@ from ta.momentum import RSIIndicator
 from ta.trend import SMAIndicator
 import io
 
-# ===== Page Configuration =====
 st.set_page_config(
     page_title="Stock Analytics Suite",
     page_icon="📊",
@@ -17,27 +16,14 @@ st.set_page_config(
 # ===== Custom CSS for Better Appearance =====
 st.markdown("""
 <style>
-    .main > div {
-        padding-top: 2rem;
-    }
-    h1 {
-        color: #1f77b4;
-        font-weight: 700;
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
+    .main > div { padding-top: 2rem; }
+    h1 { color: #1f77b4; font-weight: 700; }
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        padding-left: 20px;
-        padding-right: 20px;
+        height: 50px; padding-left: 20px; padding-right: 20px;
         border-radius: 5px 5px 0 0;
     }
-    .stButton>button {
-        width: 100%;
-        border-radius: 5px;
-        font-weight: 600;
-    }
+    .stButton>button { width: 100%; border-radius: 5px; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -45,7 +31,6 @@ st.title("📊 Stock Analytics Suite")
 st.markdown("**Comprehensive Analysis Tools for Breakouts, Behaviors & Backtests**")
 st.divider()
 
-# ===== Helper: Breakout Logic =====
 @st.cache_data(ttl=3600)
 def is_breakout_last_13_days(hist):
     if len(hist) < 30:
@@ -66,27 +51,37 @@ def find_breakouts(tickers, suffix):
     for idx, ticker in enumerate(tickers):
         full_ticker = ticker + suffix
         status_text.text(f"Analyzing {full_ticker}... ({idx + 1}/{len(tickers)})")
-        
         try:
             stock = yf.Ticker(full_ticker)
             hist = stock.history(period="2mo", interval="1d")
             hist_1y = stock.history(period="1y", interval="1d")
-            
             if hist.empty or hist_1y.empty or 'Close' not in hist or 'Volume' not in hist:
+                all_results.append({
+                    'Ticker': full_ticker,
+                    'Status': 'No Data',
+                    'Sector': '',
+                    'Current Price': '',
+                    '30-Day High': '',
+                    'Breakout Date': '',
+                    'MA Signal (LT)': '',
+                    'Trend Days LT (+/-)': '',
+                    'ST Signal': '',
+                    'Trend Days ST (+/-)': '',
+                    'EMA Filter': '',
+                    'Volume Confirmed': '',
+                    'Breakout': '',
+                    'Volume': '',
+                    'Avg Vol(30d)': ''
+                })
+                progress_bar.progress((idx + 1) / len(tickers))
                 continue
-            
-            # Long-term trend
             hist_1y['MA_50'] = hist_1y['Close'].rolling(window=50).mean()
             hist_1y['MA_200'] = hist_1y['Close'].rolling(window=200).mean()
             is_bullish = hist_1y['MA_50'].iloc[-1] > hist_1y['MA_200'].iloc[-1]
             ma_signal = "Bullish 🟢" if is_bullish else "Bearish 🔴"
-            
-            # Count trend days
             hist_1y['LT_Trend'] = hist_1y['MA_50'] > hist_1y['MA_200']
             trend_days = (hist_1y['LT_Trend'] == hist_1y['LT_Trend'].iloc[-1])[::-1].cumprod().sum()
             trend_days_signed = trend_days if is_bullish else -trend_days
-            
-            # Short-term trend
             hist_1y['MA_20'] = hist_1y['Close'].rolling(window=20).mean()
             hist_1y['MA_50_ST'] = hist_1y['Close'].rolling(window=50).mean()
             st_bullish = hist_1y['MA_20'].iloc[-1] > hist_1y['MA_50_ST'].iloc[-1]
@@ -94,28 +89,22 @@ def find_breakouts(tickers, suffix):
             hist_1y['ST_Trend'] = hist_1y['MA_20'] > hist_1y['MA_50_ST']
             st_days = (hist_1y['ST_Trend'] == hist_1y['ST_Trend'].iloc[-1])[::-1].cumprod().sum()
             st_days_signed = st_days if st_bullish else -st_days
-            
             if is_bullish:
                 bullish_count += 1
             else:
                 bearish_count += 1
-            
-            # EMA and volume checks
             hist['EMA_20'] = hist['Close'].ewm(span=20, adjust=False).mean()
             hist['EMA_50'] = hist['Close'].ewm(span=50, adjust=False).mean()
             ema_ok = hist['Close'].iloc[-1] > hist['EMA_20'].iloc[-1] > hist['EMA_50'].iloc[-1]
-            
             recent_volume = hist['Volume'].iloc[-1]
             avg_volume = hist['Volume'].iloc[-30:].mean()
             volume_confirmed = recent_volume > 1.5 * avg_volume
-            
             breakout = is_breakout_last_13_days(hist)
-            
             info = stock.info
             sector = info.get('sector', 'Unknown')
-            
             all_results.append({
                 'Ticker': full_ticker,
+                'Status': 'OK',
                 'Sector': sector,
                 'Current Price': round(hist['Close'].iloc[-1], 2),
                 '30-Day High': round(hist['High'].iloc[-30:-1].max(), 2),
@@ -130,14 +119,27 @@ def find_breakouts(tickers, suffix):
                 'Volume': int(recent_volume),
                 'Avg Vol(30d)': int(avg_volume)
             })
-        except Exception:
-            continue
-        
+        except Exception as e:
+            all_results.append({
+                'Ticker': full_ticker,
+                'Status': f"Error: {e}",
+                'Sector': '',
+                'Current Price': '',
+                '30-Day High': '',
+                'Breakout Date': '',
+                'MA Signal (LT)': '',
+                'Trend Days LT (+/-)': '',
+                'ST Signal': '',
+                'Trend Days ST (+/-)': '',
+                'EMA Filter': '',
+                'Volume Confirmed': '',
+                'Breakout': '',
+                'Volume': '',
+                'Avg Vol(30d)': ''
+            })
         progress_bar.progress((idx + 1) / len(tickers))
-    
     progress_bar.empty()
     status_text.empty()
-    
     df = pd.DataFrame(all_results)
     return df, bullish_count, bearish_count
 
